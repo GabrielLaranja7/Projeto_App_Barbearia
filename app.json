@@ -1,0 +1,344 @@
+// src/screens/auth/LoginScreen.tsx
+import React, { useState } from 'react';
+import {
+  View, Text, TextInput, TouchableOpacity,
+  StyleSheet, KeyboardAvoidingView, Platform,
+  ActivityIndicator, StatusBar, Modal, ScrollView,
+} from 'react-native';
+import CustomAlert from '../../components/common/CustomAlert';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../theme';
+import { useAuthStore } from '../../store/authStore';
+import { loginUser, registerUser } from '../../services/firebase';
+
+export default function LoginScreen({ navigation }: any) {
+  const { login, loginAsGuest } = useAuthStore();
+
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+
+  // Login
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
+  const [showPwd,  setShowPwd]  = useState(false);
+
+  // Cadastro
+  const [name,            setName]            = useState('');
+  const [regEmail,        setRegEmail]        = useState('');
+  const [regPassword,     setRegPassword]     = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showRegPwd,      setShowRegPwd]      = useState(false);
+  const [showConfirm,     setShowConfirm]     = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [errors,  setErrors]  = useState<Record<string, string>>({});
+  const [alertConfig, setAlertConfig] = useState({ visible: false, title: '', message: '', type: 'info' as any });
+
+  // Visitante
+  const [showGuestModal, setShowGuestModal] = useState(false);
+  const [guestName,      setGuestName]      = useState('');
+
+  function switchMode(next: 'login' | 'register') {
+    setMode(next);
+    setEmail(''); setPassword('');
+    setName(''); setRegEmail(''); setRegPassword(''); setConfirmPassword('');
+    setErrors({});
+  }
+
+  // ── Validação email ───────────────────────────────────────
+  function isValidEmail(e: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  }
+
+  // ── Validação login ───────────────────────────────────────
+  function validateLogin(): boolean {
+    const e: Record<string, string> = {};
+    if (!isValidEmail(email)) e.email = 'Digite um e-mail válido.';
+    if (password.length < 6)  e.password = 'A senha deve ter ao menos 6 caracteres.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
+  // ── Validação cadastro ────────────────────────────────────
+  function validateRegister(): boolean {
+    const e: Record<string, string> = {};
+    if (name.trim().length < 10)
+      e.name = 'O nome deve ter ao menos 10 caracteres.';
+    if (name.trim().length > 60)
+      e.name = 'O nome deve ter no máximo 60 caracteres.';
+    if (!isValidEmail(regEmail))
+      e.regEmail = 'Digite um e-mail válido.';
+    if (regPassword.length < 6)
+      e.regPassword = 'A senha deve ter ao menos 6 caracteres.';
+    if (regPassword.length > 12)
+      e.regPassword = 'A senha deve ter no máximo 12 caracteres.';
+    if (regPassword !== confirmPassword)
+      e.confirmPassword = 'As senhas não coincidem.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
+  // ── Submit ────────────────────────────────────────────────
+  async function handleSubmit() {
+    if (mode === 'login') {
+      if (!validateLogin()) return;
+      setLoading(true);
+      const result = await loginUser(email, password);
+      setLoading(false);
+      if (result.success) {
+        await login(result.user, `token_${result.user.id}`);
+      } else {
+        setAlertConfig({ visible: true, title: 'Erro ao entrar', message: result.error, type: 'error' });
+      }
+    } else {
+      if (!validateRegister()) return;
+      setLoading(true);
+      const result = await registerUser(name, regEmail, regPassword);
+      setLoading(false);
+      if (result.success) {
+        setAlertConfig({ visible: true, title: 'Sucesso', message: 'Conta criada com sucesso! Faça login para continuar.', type: 'success' });
+        switchMode('login');
+      } else {
+        setAlertConfig({ visible: true, title: 'Erro no cadastro', message: result.error, type: 'error' });
+      }
+    }
+  }
+
+  const handleGuestLogin = async () => {
+    if (guestName.trim().length < 3) return;
+    setLoading(true);
+    await loginAsGuest(guestName);
+    setLoading(false);
+    setShowGuestModal(false);
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <StatusBar barStyle="light-content" backgroundColor={Colors.bg.primary} />
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Logo */}
+        <View style={styles.logoWrap}>
+          <View style={styles.diamond}>
+            <Text style={styles.diamondLetter}>J</Text>
+          </View>
+          <Text style={styles.logoText}>Barbearia Joao</Text>
+          <Text style={styles.logoSub}>Botafogo - Rio de Janeiro</Text>
+        </View>
+
+        {/* Toggle */}
+        <View style={styles.toggle}>
+          <TouchableOpacity
+            style={[styles.toggleBtn, mode === 'login' && styles.toggleBtnActive]}
+            onPress={() => switchMode('login')}
+          >
+            <Text style={[styles.toggleText, mode === 'login' && styles.toggleTextActive]}>Entrar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, mode === 'register' && styles.toggleBtnActive]}
+            onPress={() => switchMode('register')}
+          >
+            <Text style={[styles.toggleText, mode === 'register' && styles.toggleTextActive]}>Cadastrar</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.title}>
+            {mode === 'login' ? 'Entrar na sua conta' : 'Criar sua conta'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {mode === 'login'
+              ? 'Use seu e-mail e senha para acessar.'
+              : 'Preencha os dados abaixo para se cadastrar.'}
+          </Text>
+
+          {/* ── LOGIN ── */}
+          {mode === 'login' && (
+            <>
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>E-mail</Text>
+                <View style={[styles.inputWrap, errors.email ? styles.inputError : null]}>
+                  <Ionicons name="mail-outline" size={18} color={Colors.text.muted} />
+                  <TextInput
+                    style={styles.input}
+                    value={email}
+                    onChangeText={(v) => { setEmail(v); setErrors(e => ({ ...e, email: undefined as any })); }}
+                    placeholder="seuemail@exemplo.com"
+                    placeholderTextColor={Colors.text.disabled}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+                {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
+              </View>
+
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>Senha</Text>
+                <View style={[styles.inputWrap, errors.password ? styles.inputError : null]}>
+                  <Ionicons name="lock-closed-outline" size={18} color={Colors.text.muted} />
+                  <TextInput
+                    style={styles.input}
+                    value={password}
+                    onChangeText={(v) => { setPassword(v); setErrors(e => ({ ...e, password: undefined as any })); }}
+                    placeholder="Sua senha"
+                    placeholderTextColor={Colors.text.disabled}
+                    secureTextEntry={!showPwd}
+                  />
+                  <TouchableOpacity onPress={() => setShowPwd(p => !p)} style={styles.eyeBtn}>
+                    <Ionicons name={showPwd ? 'eye-outline' : 'eye-off-outline'} size={18} color={Colors.text.muted} />
+                  </TouchableOpacity>
+                </View>
+                {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
+              </View>
+            </>
+          )}
+
+          {/* ── CADASTRO ── */}
+          {mode === 'register' && (
+            <>
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>Nome completo</Text>
+                <View style={[styles.inputWrap, errors.name ? styles.inputError : null]}>
+                  <Ionicons name="person-outline" size={18} color={Colors.text.muted} />
+                  <TextInput
+                    style={styles.input}
+                    value={name}
+                    onChangeText={(v) => { setName(v); setErrors(e => ({ ...e, name: undefined as any })); }}
+                    placeholder="Mínimo 10 caracteres"
+                    placeholderTextColor={Colors.text.disabled}
+                    autoCapitalize="words"
+                    maxLength={60}
+                  />
+                </View>
+                <Text style={[styles.charCount, errors.name ? { color: Colors.error } : null]}>
+                  {name.trim().length}/60 {errors.name ? `— ${errors.name}` : ''}
+                </Text>
+              </View>
+
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>E-mail</Text>
+                <View style={[styles.inputWrap, errors.regEmail ? styles.inputError : null]}>
+                  <Ionicons name="mail-outline" size={18} color={Colors.text.muted} />
+                  <TextInput
+                    style={styles.input}
+                    value={regEmail}
+                    onChangeText={(v) => { setRegEmail(v); setErrors(e => ({ ...e, regEmail: undefined as any })); }}
+                    placeholder="seuemail@exemplo.com"
+                    placeholderTextColor={Colors.text.disabled}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+                {errors.regEmail ? <Text style={styles.errorText}>{errors.regEmail}</Text> : null}
+              </View>
+
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>Senha</Text>
+                <View style={[styles.inputWrap, errors.regPassword ? styles.inputError : null]}>
+                  <Ionicons name="lock-closed-outline" size={18} color={Colors.text.muted} />
+                  <TextInput
+                    style={styles.input}
+                    value={regPassword}
+                    onChangeText={(v) => { setRegPassword(v); setErrors(e => ({ ...e, regPassword: undefined as any })); }}
+                    placeholder="6 a 12 caracteres"
+                    placeholderTextColor={Colors.text.disabled}
+                    secureTextEntry={!showRegPwd}
+                    maxLength={12}
+                  />
+                  <TouchableOpacity onPress={() => setShowRegPwd(p => !p)} style={styles.eyeBtn}>
+                    <Ionicons name={showRegPwd ? 'eye-outline' : 'eye-off-outline'} size={18} color={Colors.text.muted} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.charCount, errors.regPassword ? { color: Colors.error } : null]}>
+                  {regPassword.length}/12 {errors.regPassword ? `— ${errors.regPassword}` : ''}
+                </Text>
+              </View>
+
+              <View style={styles.fieldWrap}>
+                <Text style={styles.label}>Confirmar senha</Text>
+                <View style={[styles.inputWrap, errors.confirmPassword ? styles.inputError : null]}>
+                  <Ionicons name="lock-closed-outline" size={18} color={Colors.text.muted} />
+                  <TextInput
+                    style={styles.input}
+                    value={confirmPassword}
+                    onChangeText={(v) => { setConfirmPassword(v); setErrors(e => ({ ...e, confirmPassword: undefined as any })); }}
+                    placeholder="Repita a senha"
+                    placeholderTextColor={Colors.text.disabled}
+                    secureTextEntry={!showConfirm}
+                    maxLength={12}
+                  />
+                  <TouchableOpacity onPress={() => setShowConfirm(p => !p)} style={styles.eyeBtn}>
+                    <Ionicons name={showConfirm ? 'eye-outline' : 'eye-off-outline'} size={18} color={Colors.text.muted} />
+                  </TouchableOpacity>
+                </View>
+                {errors.confirmPassword ? <Text style={styles.errorText}>{errors.confirmPassword}</Text> : null}
+              </View>
+            </>
+          )}
+
+          <TouchableOpacity
+            style={[styles.btn, loading && styles.btnDisabled]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading
+              ? <ActivityIndicator color={Colors.bg.primary} />
+              : <Text style={styles.btnText}>{mode === 'login' ? 'Entrar' : 'Criar conta'}</Text>
+            }
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
+
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+      />
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.bg.primary },
+  scroll: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.xxxl, justifyContent: 'center', flexGrow: 1 },
+  logoWrap: { alignItems: 'center', marginBottom: Spacing.xxl },
+  diamond: { width: 56, height: 56, backgroundColor: Colors.gold.default, borderRadius: Radius.lg, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.md },
+  diamondLetter: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.bg.primary },
+  logoText: { fontSize: FontSize.lg, fontWeight: FontWeight.medium, color: Colors.text.primary },
+  logoSub: { fontSize: FontSize.sm, color: Colors.text.muted, marginTop: 4 },
+  toggle: { flexDirection: 'row', backgroundColor: Colors.bg.secondary, borderRadius: Radius.lg, padding: 4, marginBottom: Spacing.lg, borderWidth: 0.5, borderColor: Colors.border.subtle },
+  toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: Radius.md },
+  toggleBtnActive: { backgroundColor: Colors.gold.default },
+  toggleText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.text.muted },
+  toggleTextActive: { color: Colors.bg.primary, fontWeight: FontWeight.bold },
+  card: { backgroundColor: Colors.bg.secondary, borderRadius: Radius.xl, padding: Spacing.xl, borderWidth: 0.5, borderColor: Colors.border.subtle, marginBottom: Spacing.lg },
+  title: { fontSize: FontSize.lg, fontWeight: FontWeight.medium, color: Colors.text.primary, marginBottom: Spacing.sm },
+  subtitle: { fontSize: FontSize.sm, color: Colors.text.muted, lineHeight: 20, marginBottom: Spacing.lg },
+  fieldWrap: { marginBottom: Spacing.md },
+  label: { fontSize: FontSize.sm, color: Colors.text.secondary, marginBottom: Spacing.sm },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.tertiary, borderRadius: Radius.md, borderWidth: 0.5, borderColor: Colors.border.default, paddingHorizontal: Spacing.md, gap: Spacing.sm },
+  inputError: { borderColor: Colors.error },
+  input: { flex: 1, height: 48, fontSize: FontSize.base, color: Colors.text.primary },
+  eyeBtn: { padding: 4 },
+  errorText: { fontSize: FontSize.xs, color: Colors.error, marginTop: 4, marginLeft: 2 },
+  charCount: { fontSize: FontSize.xs, color: Colors.text.disabled, marginTop: 4, marginLeft: 2 },
+  btn: { backgroundColor: Colors.gold.default, borderRadius: Radius.md, height: 50, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm },
+  btnDisabled: { opacity: 0.6 },
+  btnText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.bg.primary },
+  skipBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  skipText: { fontSize: FontSize.sm, color: Colors.text.muted },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: Spacing.xl },
+  modalContent: { backgroundColor: Colors.bg.secondary, borderRadius: Radius.xl, padding: Spacing.xl, borderWidth: 1, borderColor: Colors.gold.default },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
+  modalTitle: { fontSize: 20, fontWeight: FontWeight.bold, color: Colors.text.primary },
+  modalSubtitle: { fontSize: FontSize.base, color: Colors.text.muted, marginBottom: Spacing.xl },
+});

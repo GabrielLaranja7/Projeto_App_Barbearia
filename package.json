@@ -1,0 +1,212 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  SafeAreaView, ActivityIndicator, Dimensions,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, FontSize, FontWeight, Radius, Spacing } from '../../theme';
+import { getFinanceiroData } from '../../services/firebase';
+
+const { width } = Dimensions.get('window');
+const BAR_AREA = width - Spacing.xl * 2 - 32;
+
+type Periodo = 'dia' | 'semana' | 'mes' | 'ano';
+
+interface Appointment {
+  id: string;
+  data: string;
+  horario: string;
+  userName: string;
+  servicoNome: string;
+  valor: number;
+  status: string;
+}
+
+interface FinanceiroData {
+  appointments: Appointment[];
+  total: number;
+  labels: string[];
+  values: number[];
+}
+
+const PERIODOS: { key: Periodo; label: string }[] = [
+  { key: 'dia',    label: 'Hoje' },
+  { key: 'semana', label: 'Semana' },
+  { key: 'mes',    label: 'Mês' },
+  { key: 'ano',    label: 'Ano' },
+];
+
+export default function AdminFinanceiroScreen({ navigation }: any) {
+  const [periodo, setPeriodo] = useState<Periodo>('mes');
+  const [data, setData] = useState<FinanceiroData | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await getFinanceiroData(periodo);
+      setData(result);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [periodo]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const maxVal = data ? Math.max(...data.values, 1) : 1;
+
+  return (
+    <SafeAreaView style={styles.root}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color={Colors.text.primary} />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.title}>Financeiro</Text>
+          <Text style={styles.subtitle}>Receitas e relatórios</Text>
+        </View>
+      </View>
+
+      {/* Filtro de período */}
+      <View style={styles.filterRow}>
+        {PERIODOS.map(p => (
+          <TouchableOpacity
+            key={p.key}
+            style={[styles.filterBtn, periodo === p.key && styles.filterBtnActive]}
+            onPress={() => setPeriodo(p.key)}
+          >
+            <Text style={[styles.filterText, periodo === p.key && styles.filterTextActive]}>
+              {p.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {loading ? (
+        <ActivityIndicator color={Colors.gold.default} style={{ marginTop: 60 }} />
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+          {/* Card de total */}
+          <View style={styles.totalCard}>
+            <Text style={styles.totalLabel}>Receita total</Text>
+            <Text style={styles.totalValue}>
+              R$ {(data?.total ?? 0).toFixed(2)}
+            </Text>
+            <Text style={styles.totalSub}>
+              {data?.appointments.length ?? 0} agendamento(s)
+            </Text>
+          </View>
+
+          {/* Gráfico de barras simples */}
+          {data && data.values.length > 0 && (
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Evolução da Receita</Text>
+              <View style={styles.chart}>
+                {data.values.map((val, i) => {
+                  const barH = Math.max((val / maxVal) * 120, 4);
+                  return (
+                    <View key={i} style={styles.barWrap}>
+                      {val > 0 && (
+                        <Text style={styles.barValue}>R${val}</Text>
+                      )}
+                      <View style={[styles.bar, { height: barH }]} />
+                      <Text style={styles.barLabel} numberOfLines={1}>
+                        {data.labels[i]}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* Lista de transações */}
+          <Text style={styles.sectionTitle}>Agendamentos</Text>
+          {data?.appointments.length === 0 && (
+            <View style={styles.emptyWrap}>
+              <Ionicons name="bar-chart-outline" size={48} color={Colors.text.disabled} />
+              <Text style={styles.emptyText}>Nenhum agendamento neste período</Text>
+            </View>
+          )}
+          {data?.appointments.map(item => (
+            <View key={item.id} style={styles.txCard}>
+              <View style={styles.txLeft}>
+                <Text style={styles.txName}>{item.userName}</Text>
+                <Text style={styles.txService}>{item.servicoNome}</Text>
+                <Text style={styles.txDate}>{item.data} • {item.horario}</Text>
+              </View>
+              <View style={styles.txRight}>
+                <Text style={styles.txValue}>+R$ {item.valor}</Text>
+                <View style={[styles.badge, item.status === 'confirmado' && styles.badgeOk]}>
+                  <Text style={styles.badgeText}>{item.status ?? 'pendente'}</Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: Colors.bg.primary },
+  header: { flexDirection: 'row', alignItems: 'center', padding: Spacing.xl, paddingTop: 16 },
+  backBtn: { padding: 4 },
+  title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text.primary },
+  subtitle: { fontSize: FontSize.sm, color: Colors.text.muted },
+  filterRow: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: Spacing.xl, marginBottom: Spacing.lg,
+  },
+  filterBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: Radius.md,
+    backgroundColor: Colors.bg.secondary, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border.subtle,
+  },
+  filterBtnActive: { backgroundColor: Colors.gold.default, borderColor: Colors.gold.default },
+  filterText: { color: Colors.text.muted, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  filterTextActive: { color: Colors.bg.primary, fontWeight: FontWeight.bold },
+  scroll: { paddingHorizontal: Spacing.xl, paddingBottom: 40 },
+  totalCard: {
+    backgroundColor: Colors.bg.secondary, borderRadius: Radius.xl, padding: Spacing.xl,
+    borderWidth: 1, borderColor: Colors.gold.muted, marginBottom: Spacing.xl,
+    alignItems: 'center',
+  },
+  totalLabel: { color: Colors.text.muted, fontSize: FontSize.sm, textTransform: 'uppercase', letterSpacing: 1 },
+  totalValue: { fontSize: 36, fontWeight: FontWeight.bold, color: Colors.gold.default, marginTop: 8 },
+  totalSub: { color: Colors.text.disabled, marginTop: 4, fontSize: FontSize.sm },
+  chartCard: {
+    backgroundColor: Colors.bg.secondary, borderRadius: Radius.xl, padding: Spacing.xl,
+    marginBottom: Spacing.xl, borderWidth: 1, borderColor: Colors.border.subtle,
+  },
+  chartTitle: { color: Colors.text.secondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium, marginBottom: Spacing.lg },
+  chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 160 },
+  barWrap: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
+  bar: { width: '80%', backgroundColor: Colors.gold.default, borderRadius: 4, opacity: 0.85 },
+  barValue: { color: Colors.gold.light, fontSize: 8, fontWeight: FontWeight.bold },
+  barLabel: { color: Colors.text.disabled, fontSize: 8, textAlign: 'center' },
+  sectionTitle: {
+    fontSize: FontSize.sm, fontWeight: FontWeight.bold,
+    color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1,
+    marginBottom: Spacing.md,
+  },
+  emptyWrap: { alignItems: 'center', marginTop: 40, gap: 12 },
+  emptyText: { color: Colors.text.disabled },
+  txCard: {
+    flexDirection: 'row', backgroundColor: Colors.bg.secondary,
+    borderRadius: Radius.lg, padding: Spacing.lg, marginBottom: Spacing.md,
+    borderWidth: 1, borderColor: Colors.border.subtle,
+  },
+  txLeft: { flex: 1 },
+  txName: { color: Colors.text.primary, fontSize: FontSize.base, fontWeight: FontWeight.bold },
+  txService: { color: Colors.text.secondary, fontSize: FontSize.sm, marginTop: 2 },
+  txDate: { color: Colors.text.disabled, fontSize: FontSize.xs, marginTop: 4 },
+  txRight: { alignItems: 'flex-end', gap: 6 },
+  txValue: { color: '#4caf50', fontWeight: FontWeight.bold, fontSize: FontSize.base },
+  badge: { backgroundColor: Colors.bg.tertiary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.full },
+  badgeOk: { backgroundColor: '#4caf5033' },
+  badgeText: { color: Colors.text.disabled, fontSize: FontSize.xs },
+});

@@ -1,0 +1,166 @@
+// src/screens/app/ServicosScreen.tsx
+// Tela que lista todos os serviços oferecidos pela barbearia (cortes, barba, combos, etc.)
+import React, { useEffect, useState } from 'react';
+import {
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  Image, ActivityIndicator, SafeAreaView
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+// Hook que retorna o tema atual (cores, tamanhos de fonte, etc.) já considerando
+// se o usuário escolheu o tema claro/escuro e o tamanho de fonte preferido
+import { useTheme } from '../../hooks/useTheme';
+import { useFirebase } from '../../hooks/useFirebase';
+import { useNavigation } from '@react-navigation/native';
+
+export default function ServicosScreen() {
+  // Busca os dados do tema dinâmico (depende das preferências salvas pelo usuário)
+  const { Colors, FontSize, FontWeight, Radius, Spacing } = useTheme();
+  // Gera os estilos da tela já usando as cores/tamanhos do tema atual
+  const styles = getStyles(Colors, FontSize, FontWeight, Radius, Spacing);
+
+  const { getServicos } = useFirebase();
+  const [services, setServices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const navigation = useNavigation<any>();
+
+  // Carrega a lista de serviços ao abrir a tela
+  useEffect(() => {
+    loadServices();
+  }, []);
+
+  async function loadServices() {
+    try {
+      const data = await getServicos();
+      setServices(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Renderiza o card de cada serviço na lista
+  const renderService = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={styles.card}
+      onPress={() => navigation.navigate('ServiceDetails', { service: item })}
+      activeOpacity={0.9}
+    >
+      <View style={styles.cardContent}>
+        <View style={styles.info}>
+          <Text style={styles.category}>{(item.category || 'Geral').toUpperCase()}</Text>
+          <Text style={styles.name}>{item.nome || item.name}</Text>
+          <Text style={styles.description} numberOfLines={2}>
+            {item.description || item.desc || 'Sem descricao disponivel.'}
+          </Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.price}>
+              R$ {item.promoPrice || item.price || item.valor}
+            </Text>
+            {/* Mostra o preço antigo cortado se houver promoção */}
+            {(item.promoPrice && item.price) && (
+              <Text style={styles.oldPrice}>R$ {item.price}</Text>
+            )}
+            <View style={styles.dot} />
+            <Text style={styles.duration}>{item.duration || 30} min</Text>
+          </View>
+        </View>
+        <View style={styles.imageContainer}>
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.image} />
+          ) : (
+            // Caso o serviço não tenha imagem, exibe um ícone padrão
+            <View style={styles.placeholderImage}>
+              <Ionicons name="cut-outline" size={30} color={Colors.gold.default} />
+            </View>
+          )}
+          {/* Botão rápido para já ir direto para a tela de agendamento */}
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={() => navigation.navigate('MainFlow', { screen: 'Tabs', params: { screen: 'AgendaTab', params: { service: item } } })}
+          >
+            <Ionicons name="add" size={20} color={Colors.bg.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  // Enquanto os serviços ainda estão sendo carregados, mostra um spinner
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={Colors.gold.default} />
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.root}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Nossos Serviços</Text>
+        <Text style={styles.subtitle}>Escolha o melhor para o seu estilo</Text>
+      </View>
+      <FlatList
+        data={services}
+        renderItem={renderService}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          // Mensagem exibida quando não há nenhum serviço cadastrado
+          <View style={styles.empty}>
+            <Ionicons name="search-outline" size={50} color={Colors.text.disabled} />
+            <Text style={styles.emptyText}>Nenhum servico encontrado.</Text>
+          </View>
+        }
+      />
+    </SafeAreaView>
+  );
+}
+
+// Função que monta o StyleSheet usando as cores/tamanhos vindos do tema dinâmico.
+// É chamada dentro do componente para que os estilos sempre reflitam o tema atual
+// (claro/escuro) e o tamanho de fonte escolhido pelo usuário.
+function getStyles(Colors: any, FontSize: any, FontWeight: any, Radius: any, Spacing: any) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: Colors.bg.primary },
+    loading: { flex: 1, backgroundColor: Colors.bg.primary, justifyContent: 'center' },
+    header: { padding: Spacing.xl, paddingTop: Spacing.xxl },
+    title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text.primary },
+    subtitle: { fontSize: FontSize.base, color: Colors.text.muted, marginTop: 4 },
+    list: { padding: Spacing.xl, paddingBottom: 100 },
+    card: { 
+      backgroundColor: Colors.bg.secondary, 
+      borderRadius: Radius.xl, 
+      marginBottom: Spacing.lg,
+      borderWidth: 1,
+      borderColor: Colors.border.subtle,
+      overflow: 'hidden'
+    },
+    cardContent: { flexDirection: 'row', padding: Spacing.lg },
+    info: { flex: 1, marginRight: Spacing.md },
+    category: { fontSize: 10, fontWeight: FontWeight.bold, color: Colors.gold.default, letterSpacing: 1 },
+    name: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text.primary, marginVertical: 4 },
+    description: { fontSize: FontSize.sm, color: Colors.text.muted, lineHeight: 20 },
+    priceRow: { flexDirection: 'row', alignItems: 'center', marginTop: Spacing.md },
+    price: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.gold.default },
+    oldPrice: { fontSize: FontSize.xs, color: Colors.text.disabled, textDecorationLine: 'line-through', marginLeft: 8 },
+    dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.text.disabled, marginHorizontal: 8 },
+    duration: { fontSize: FontSize.xs, color: Colors.text.muted },
+    imageContainer: { width: 100, height: 100, position: 'relative' },
+    image: { width: '100%', height: '100%', borderRadius: Radius.lg },
+    placeholderImage: { 
+      width: '100%', height: '100%', borderRadius: Radius.lg, 
+      backgroundColor: Colors.bg.tertiary, alignItems: 'center', justifyContent: 'center' 
+    },
+    addButton: {
+      position: 'absolute', bottom: -5, right: -5,
+      backgroundColor: Colors.gold.default, width: 32, height: 32,
+      borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 3, borderColor: Colors.bg.secondary
+    },
+    empty: { alignItems: 'center', marginTop: 100 },
+    emptyText: { color: Colors.text.disabled, marginTop: 16, fontSize: FontSize.base }
+  });
+}

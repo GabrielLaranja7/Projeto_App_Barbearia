@@ -1,0 +1,168 @@
+// src/screens/app/ServiceDetailsScreen.tsx
+// Tela de detalhes de um serviço específico (aberta ao tocar em um serviço na lista)
+import React from 'react';
+import { 
+  View, Text, StyleSheet, Image, ScrollView, 
+  TouchableOpacity, SafeAreaView, StatusBar 
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+// Hook do tema dinâmico (claro/escuro + tamanho de fonte)
+import { useTheme } from '../../hooks/useTheme';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { Service } from '../../hooks/useFirebase';
+
+export default function ServiceDetailsScreen() {
+  // Pega as cores e tamanhos atuais conforme o tema escolhido pelo usuário
+  const { Colors, FontSize, FontWeight, Radius, Spacing } = useTheme();
+  const styles = getStyles(Colors, FontSize, FontWeight, Radius, Spacing);
+
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const { service } = route.params as { service: Service };
+
+  // Caso o serviço não seja encontrado (parâmetro inválido), mostra mensagem de erro
+  if (!service) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <View style={styles.loading}>
+          <Text style={{ color: Colors.text.primary }}>Serviço não encontrado.</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
+            <Text style={{ color: Colors.gold.default }}>Voltar</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.root}>
+      {/* A barra de status se adapta ao tema: clara no escuro, escura no claro */}
+      <StatusBar barStyle={Colors.bg.primary === '#0d0d0d' ? 'light-content' : 'dark-content'} />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Imagem (ou ícone) do serviço no topo da tela */}
+        <View style={styles.imageContainer}>
+          {service.imageUrl ? (
+            <Image source={{ uri: service.imageUrl }} style={styles.image} />
+          ) : (
+            <View style={styles.placeholderImage}>
+              <Ionicons name="cut" size={80} color={Colors.gold.default} />
+            </View>
+          )}
+          {/* Botão de voltar sobreposto na imagem */}
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.text.primary} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.content}>
+          {/* Cabeçalho: categoria, nome e preço */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.category}>{service.category.toUpperCase()}</Text>
+              <Text style={styles.name}>{service.nome}</Text>
+            </View>
+            <View style={styles.priceTag}>
+              <Text style={styles.price}>R$ {service.promoPrice || service.price}</Text>
+            </View>
+          </View>
+
+          {/* Informações rápidas: duração e avaliação */}
+          <View style={styles.stats}>
+            <View style={styles.statItem}>
+              <Ionicons name="time-outline" size={20} color={Colors.gold.default} />
+              <Text style={styles.statText}>{service.duration} min</Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.statItem}>
+              <Ionicons name="star" size={20} color={Colors.gold.default} />
+              <Text style={styles.statText}>4.9 (120+)</Text>
+            </View>
+          </View>
+
+          {/* Descrição completa do serviço */}
+          <Text style={styles.sectionTitle}>Sobre o serviço</Text>
+          <Text style={styles.description}>{service.description}</Text>
+
+          {/* Lista de benefícios/diferenciais inclusos no serviço */}
+          <View style={styles.benefits}>
+            <View style={styles.benefitItem}>
+              <Ionicons name="checkmark-circle" size={20} color={Colors.gold.default} />
+              <Text style={styles.benefitText}>Produtos Premium</Text>
+            </View>
+            <View style={styles.benefitItem}>
+              <Ionicons name="checkmark-circle" size={20} color={Colors.gold.default} />
+              <Text style={styles.benefitText}>Profissionais Especialistas</Text>
+            </View>
+            <View style={styles.benefitItem}>
+              <Ionicons name="checkmark-circle" size={20} color={Colors.gold.default} />
+              <Text style={styles.benefitText}>Ambiente Climatizado</Text>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Rodapé fixo com o botão principal de agendamento */}
+      <View style={styles.footer}>
+        <TouchableOpacity 
+          style={styles.bookButton}
+          onPress={() => {
+            // Navega para a aba de agendamento, já levando o serviço selecionado
+            navigation.navigate('MainFlow', {
+              screen: 'Tabs',
+              params: {
+                screen: 'AgendaTab',
+                params: { service }
+              }
+            });
+          }}
+        >
+          <Text style={styles.bookButtonText}>Agendar agora</Text>
+          <Ionicons name="calendar" size={20} color={Colors.bg.primary} />
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// Monta os estilos da tela com base no tema atual (cores/tamanhos dinâmicos)
+function getStyles(Colors: any, FontSize: any, FontWeight: any, Radius: any, Spacing: any) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: Colors.bg.primary },
+    loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    imageContainer: { width: '100%', height: 350, position: 'relative' },
+    image: { width: '100%', height: '100%' },
+    placeholderImage: { 
+      width: '100%', height: '100%', backgroundColor: Colors.bg.secondary, 
+      alignItems: 'center', justifyContent: 'center' 
+    },
+    backButton: {
+      position: 'absolute', top: 50, left: 20,
+      width: 44, height: 44, borderRadius: 22,
+      backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center'
+    },
+    content: { padding: Spacing.xl, marginTop: -30, backgroundColor: Colors.bg.primary, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    category: { fontSize: 12, fontWeight: FontWeight.bold, color: Colors.gold.default, letterSpacing: 1.5 },
+    name: { fontSize: 28, fontWeight: FontWeight.bold, color: Colors.text.primary, marginTop: 4 },
+    priceTag: { backgroundColor: Colors.bg.tertiary, padding: 12, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.gold.default },
+    price: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.gold.default },
+    stats: { flexDirection: 'row', alignItems: 'center', marginVertical: Spacing.xl, padding: Spacing.md, backgroundColor: Colors.bg.secondary, borderRadius: Radius.lg },
+    statItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    statText: { color: Colors.text.primary, fontWeight: FontWeight.medium },
+    divider: { width: 1, height: 20, backgroundColor: Colors.border.subtle },
+    sectionTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text.primary, marginBottom: Spacing.md },
+    description: { fontSize: FontSize.base, color: Colors.text.muted, lineHeight: 24, marginBottom: Spacing.xl },
+    benefits: { gap: 12, marginBottom: 40 },
+    benefitItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    benefitText: { color: Colors.text.secondary, fontSize: FontSize.base },
+    footer: { padding: Spacing.xl, borderTopWidth: 1, borderTopColor: Colors.border.subtle, backgroundColor: Colors.bg.primary },
+    bookButton: { 
+      backgroundColor: Colors.gold.default, height: 56, borderRadius: Radius.lg, 
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 
+    },
+    bookButtonText: { color: Colors.bg.primary, fontSize: FontSize.lg, fontWeight: FontWeight.bold }
+  });
+}

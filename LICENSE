@@ -1,0 +1,322 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, 
+  TextInput, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator
+} from 'react-native';
+import CustomAlert from '../../components/common/CustomAlert';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '../../store/authStore';
+import { useThemeStore, FontScale } from '../../store/themeStore';
+import { useTheme } from '../../hooks/useTheme';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { useFirebase } from '../../hooks/useFirebase';
+import { db } from '../../services/firebase';
+
+export default function PerfilScreen() {
+  const { user, logout } = useAuthStore();
+  const { theme, fontScale, setTheme, setFontScale } = useThemeStore();
+  const { Colors, FontSize, FontWeight, Radius, Spacing } = useTheme();
+  // Estilos gerados dinamicamente a partir do tema atual (claro/escuro)
+  const styles = getStyles(Colors, FontSize, FontWeight, Radius, Spacing);
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState(user?.name || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [alertConfig, setAlertConfig] = useState({ visible: false, title: '', message: '', type: 'info' as any });
+
+  useEffect(() => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'appointments'),
+      where('userId', '==', user.id),
+      orderBy('data', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAppointments(data);
+      setLoading(false);
+    }, (error) => {
+      console.error("Erro ao carregar agendamentos:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user?.id]);
+
+  const handleSave = () => {
+    // Aqui integraria com Firebase no futuro
+    setAlertConfig({ visible: true, title: 'Sucesso', message: 'Suas informações foram atualizadas!', type: 'success' });
+    setIsEditing(false);
+  };
+
+  const formatarData = (dataStr: string) => {
+    if (!dataStr) return 'Data inválida';
+    const [ano, mes, dia] = dataStr.split('-');
+    return `${dia}/${mes}/${ano}`;
+  };
+
+  return (
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.header}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>
+              {name.substring(0, 2).toUpperCase()}
+            </Text>
+            <TouchableOpacity style={styles.editBadge}>
+              <Ionicons name="camera" size={16} color={Colors.bg.primary} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.userName}>{name}</Text>
+          <Text style={styles.userStatus}>
+            {user?.isGuest ? 'Visitante' : 'Cliente VIP'}
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Dados Pessoais</Text>
+            {!isEditing && (
+              <TouchableOpacity onPress={() => setIsEditing(true)}>
+                <Text style={styles.editLink}>Editar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.infoCard}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nome Completo</Text>
+              <TextInput
+                style={[styles.input, !isEditing && styles.inputDisabled]}
+                value={name}
+                onChangeText={setName}
+                editable={isEditing}
+                placeholder="Seu nome"
+                placeholderTextColor={Colors.text.disabled}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Telefone</Text>
+              <TextInput
+                style={[styles.input, !isEditing && styles.inputDisabled]}
+                value={phone}
+                onChangeText={setPhone}
+                editable={isEditing}
+                placeholder="(21) 99999-9999"
+                placeholderTextColor={Colors.text.disabled}
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            {isEditing && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity 
+                  style={styles.btnCancel} 
+                  onPress={() => setIsEditing(false)}
+                >
+                  <Text style={styles.btnCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnSave} onPress={handleSave}>
+                  <Text style={styles.btnSaveText}>Salvar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Meus Agendamentos</Text>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={Colors.gold.default} />
+            </View>
+          ) : appointments.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={40} color={Colors.text.disabled} />
+              <Text style={styles.emptyText}>Nenhum agendamento realizado</Text>
+              <Text style={styles.emptySubtext}>Agende um serviço para ver aqui</Text>
+            </View>
+          ) : (
+            appointments.map((appt) => (
+              <View key={appt.id} style={styles.appointmentCard}>
+                <View style={styles.appointmentTop}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.appointmentService}>{appt.servicoNome}</Text>
+                    <Text style={styles.appointmentDate}>{formatarData(appt.data)} às {appt.horario}</Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: appt.status === 'confirmado' ? Colors.gold.default : Colors.text.disabled }]}>
+                    <Text style={styles.statusText}>{appt.status === 'confirmado' ? 'Confirmado' : 'Pendente'}</Text>
+                  </View>
+                </View>
+                <View style={styles.appointmentBottom}>
+                  <Text style={styles.appointmentPrice}>R$ {appt.valor}</Text>
+                  <TouchableOpacity style={styles.appointmentAction}>
+                    <Ionicons name="chevron-forward" size={16} color={Colors.text.disabled} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: Colors.text.primary }]}>Acessibilidade</Text>
+          <View style={[styles.infoCard, { backgroundColor: Colors.bg.secondary }]}>
+            {/* Tema */}
+            <View style={styles.settingRow}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: Colors.bg.tertiary }]}>
+                  <Ionicons name="moon" size={18} color={Colors.gold.default} />
+                </View>
+                <View>
+                  <Text style={[styles.settingLabel, { color: Colors.text.primary }]}>Tema</Text>
+                  <Text style={[styles.settingValue, { color: Colors.text.muted }]}>{theme === 'dark' ? 'Escuro' : 'Claro'}</Text>
+                </View>
+              </View>
+              <TouchableOpacity 
+                style={[styles.themeToggle, { backgroundColor: theme === 'dark' ? Colors.gold.default : Colors.bg.tertiary }]}
+                onPress={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              >
+                <Ionicons name={theme === 'dark' ? 'moon' : 'sunny'} size={16} color={theme === 'dark' ? Colors.bg.primary : Colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Tamanho de Fonte */}
+            <View style={[styles.settingRow, { borderTopWidth: 0.5, borderTopColor: Colors.border.subtle, paddingTop: Spacing.md, marginTop: Spacing.md }]}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: Colors.bg.tertiary }]}>
+                  <Ionicons name="text" size={18} color={Colors.gold.default} />
+                </View>
+                <View>
+                  <Text style={[styles.settingLabel, { color: Colors.text.primary }]}>Tamanho da Fonte</Text>
+                  <Text style={[styles.settingValue, { color: Colors.text.muted }]}>{fontScale === 'small' ? 'Pequeno' : fontScale === 'normal' ? 'Normal' : fontScale === 'large' ? 'Grande' : 'Extra Grande'}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Botões de Tamanho */}
+            <View style={[styles.fontSizeButtons, { marginTop: Spacing.md }]}>
+              {(['small', 'normal', 'large', 'extra-large'] as FontScale[]).map((size) => (
+                <TouchableOpacity
+                  key={size}
+                  style={[styles.fontSizeBtn, fontScale === size && { backgroundColor: Colors.gold.default }, { backgroundColor: fontScale === size ? Colors.gold.default : Colors.bg.tertiary, borderColor: Colors.border.default }]}
+                  onPress={() => setFontScale(size)}
+                >
+                  <Text style={[styles.fontSizeBtnText, { fontSize: FontSize.sm, color: fontScale === size ? Colors.bg.primary : Colors.text.primary }]}>
+                    {size === 'small' ? 'P' : size === 'normal' ? 'M' : size === 'large' ? 'G' : 'GG'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        <TouchableOpacity style={[styles.btnLogout, { borderTopColor: Colors.border.subtle }]} onPress={logout}>
+          <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+          <Text style={[styles.btnLogoutText, { color: Colors.error }]}>Sair da Conta</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+      />
+    </KeyboardAvoidingView>
+  );
+}
+
+// Função que gera os estilos da tela com base no tema dinâmico (cores/tamanhos)
+function getStyles(Colors: any, FontSize: any, FontWeight: any, Radius: any, Spacing: any) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.bg.primary },
+  scrollContent: { padding: Spacing.xl, paddingTop: 60 },
+  header: { alignItems: 'center', marginBottom: Spacing.xxl },
+  avatarCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: Colors.bg.tertiary,
+    borderWidth: 2,
+    borderColor: Colors.gold.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+    position: 'relative'
+  },
+  avatarText: { fontSize: 32, fontWeight: FontWeight.bold, color: Colors.gold.default },
+  editBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: Colors.gold.default,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.bg.primary
+  },
+  userName: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text.primary },
+  userStatus: { fontSize: FontSize.sm, color: Colors.text.muted, marginTop: 4 },
+  section: { marginBottom: Spacing.xl },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
+  sectionTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text.primary, textTransform: 'uppercase', letterSpacing: 1 },
+  editLink: { color: Colors.gold.default, fontSize: FontSize.sm },
+  infoCard: { backgroundColor: Colors.bg.secondary, borderRadius: Radius.lg, padding: Spacing.lg, borderWidth: 0.5, borderColor: Colors.border.subtle },
+  inputGroup: { marginBottom: Spacing.md },
+  label: { fontSize: FontSize.xs, color: Colors.text.disabled, marginBottom: 4, textTransform: 'uppercase' },
+  input: { backgroundColor: Colors.bg.tertiary, borderRadius: Radius.md, padding: 12, color: Colors.text.primary, fontSize: FontSize.base, borderWidth: 0.5, borderColor: Colors.border.default },
+  inputDisabled: { opacity: 0.7, borderColor: 'transparent' },
+  actionRow: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm },
+  btnCancel: { flex: 1, padding: 12, borderRadius: Radius.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border.default },
+  btnCancelText: { color: Colors.text.muted },
+  btnSave: { flex: 2, backgroundColor: Colors.gold.default, padding: 12, borderRadius: Radius.md, alignItems: 'center' },
+  btnSaveText: { color: Colors.bg.primary, fontWeight: FontWeight.bold },
+  menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.secondary, padding: Spacing.md, borderRadius: Radius.lg, marginBottom: Spacing.sm, borderWidth: 0.5, borderColor: Colors.border.subtle },
+  menuIcon: { width: 36, height: 36, borderRadius: Radius.md, backgroundColor: Colors.bg.tertiary, alignItems: 'center', justifyContent: 'center', marginRight: Spacing.md },
+  menuText: { flex: 1, fontSize: FontSize.base, color: Colors.text.primary },
+  btnLogout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: Spacing.xl, marginTop: Spacing.md },
+  btnLogoutText: { color: Colors.error, fontSize: FontSize.base, fontWeight: FontWeight.medium },
+  loadingContainer: { padding: Spacing.xl, alignItems: 'center', justifyContent: 'center', minHeight: 150 },
+  emptyContainer: { padding: Spacing.xl, alignItems: 'center', justifyContent: 'center', minHeight: 150, backgroundColor: Colors.bg.secondary, borderRadius: Radius.lg },
+  emptyText: { fontSize: FontSize.base, color: Colors.text.primary, marginTop: Spacing.md, fontWeight: FontWeight.medium },
+  emptySubtext: { fontSize: FontSize.sm, color: Colors.text.muted, marginTop: Spacing.sm },
+  appointmentCard: { backgroundColor: Colors.bg.secondary, borderRadius: Radius.lg, padding: Spacing.lg, marginBottom: Spacing.md, borderWidth: 0.5, borderColor: Colors.border.subtle },
+  appointmentTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.md },
+  appointmentService: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.text.primary },
+  appointmentDate: { fontSize: FontSize.sm, color: Colors.text.muted, marginTop: 4 },
+  statusBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.md },
+  statusText: { fontSize: 10, fontWeight: FontWeight.bold, color: Colors.bg.primary, textTransform: 'uppercase' },
+  appointmentBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: Spacing.md, borderTopWidth: 0.5, borderTopColor: Colors.border.subtle },
+  appointmentPrice: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.gold.default },
+  appointmentAction: { padding: 8 },
+  settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.md },
+  settingLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  settingIcon: { width: 40, height: 40, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center', marginRight: Spacing.md },
+  settingLabel: { fontSize: FontSize.base, fontWeight: FontWeight.medium },
+  settingValue: { fontSize: FontSize.sm, marginTop: 2 },
+  themeToggle: { width: 44, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
+  fontSizeButtons: { flexDirection: 'row', gap: Spacing.sm, justifyContent: 'space-between' },
+  fontSizeBtn: { flex: 1, paddingVertical: Spacing.md, borderRadius: Radius.md, alignItems: 'center', borderWidth: 1 },
+  fontSizeBtnText: { fontWeight: FontWeight.bold }
+});
+}
